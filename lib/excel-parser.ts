@@ -68,7 +68,11 @@ export async function parseExcelFile(file: File): Promise<OriginalExcelRow[]> {
 
         // Create consolidated data for reports
         const consolidatedData = createConsolidatedData(originalData)
-        localStorage.setItem("installationData", JSON.stringify(consolidatedData))
+
+        localStorage.setItem("consolidatedData", JSON.stringify(consolidatedData))
+
+        // Also save a toilet count (can be calculated or set to 0 for now)
+        localStorage.setItem("toiletCount", JSON.stringify(0))
 
         console.log("Excel Parser: Created", consolidatedData.length, "consolidated units")
 
