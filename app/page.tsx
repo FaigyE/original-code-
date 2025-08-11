@@ -3,8 +3,8 @@
 import type React from "react"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { processCsvData } from "@/utils/csvProcessor"
-import { parseExcelFile } from "@/utils/excelParser"
+import { processCsvData } from "../utils/csvProcessor"
+import { parseExcelFile } from "../utils/excelParser"
 
 const Page = () => {
   const [file, setFile] = useState<File | null>(null)
