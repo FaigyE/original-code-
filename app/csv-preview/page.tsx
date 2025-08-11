@@ -28,9 +28,10 @@ export default function CsvPreviewPage() {
       return []
     }
 
-    // Check first 10 rows to get all possible columns
     const allColumns = new Set<string>()
-    const rowsToCheck = Math.min(10, data.length)
+
+    // Get all possible column names from the first few rows
+    const rowsToCheck = Math.min(50, data.length) // Check up to 50 rows instead of 10
 
     console.log(`CSV Preview: Checking ${rowsToCheck} rows for column detection`)
 
