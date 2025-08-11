@@ -26,8 +26,18 @@ export const isAeratorInstalled = (value: string) => {
 export const getAeratorDescription = (value: string, type: string) => {
   if (!value) return "No Touch."
 
-  if (value === "1") return type === "shower" ? "1.75 GPM" : "1.0 GPM"
-  if (value === "2") return type === "shower" ? "1.75 GPM" : "1.0 GPM"
+  // Handle numeric values (1, 2, 3, etc.)
+  const numericValue = Number.parseInt(value)
+  if (!isNaN(numericValue) && numericValue > 0) {
+    const baseGPM = type === "shower" ? "1.75 GPM" : "1.0 GPM"
+
+    // Add quantity in parentheses if more than 1
+    if (numericValue === 1) {
+      return baseGPM
+    } else {
+      return `${baseGPM} (${numericValue})`
+    }
+  }
 
   // If it's a text value that indicates installation
   if (isAeratorInstalled(value)) {
