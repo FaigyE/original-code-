@@ -1,158 +1,169 @@
 import * as XLSX from "xlsx"
 
-interface ExcelRow {
-  unit: string
-  toilet: string
-  kitchenAerator: string
-  bathroomAerator: string
-  showerHead: string
-  // Add other fields as needed
+// Interface for the original Excel row data
+interface OriginalExcelRow {
+  [key: string]: any
 }
 
-export interface ConsolidatedUnit {
+// Interface for consolidated unit data
+interface ConsolidatedUnit {
   unit: string
   kitchenAeratorCount: number
   bathroomAeratorCount: number
   showerHeadCount: number
 }
 
-/**
- * Dynamically finds column indices based on header keywords
- */
-const findColumnIndices = (
-  headers: any[],
-): {
-  unitIndex: number
-  toiletIndex: number
-  kitchenAeratorIndex: number
-  bathroomAeratorIndex: number
-  showerHeadIndex: number
-} => {
-  console.log("Excel Parser: Analyzing headers:", headers)
+export async function parseExcelFile(file: File): Promise<OriginalExcelRow[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
 
-  const headerStrings = headers.map((h) => (h || "").toString().toLowerCase())
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer)
+        const workbook = XLSX.read(data, { type: "array" })
 
-  const unitIndex = headerStrings.findIndex((h) => h.includes("unit") || h.includes("apt") || h.includes("apartment"))
+        // Get the first worksheet
+        const firstSheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[firstSheetName]
 
-  const toiletIndex = headerStrings.findIndex((h) => h.includes("toilet") || h.includes("wc"))
+        // Convert to JSON with header row
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][]
 
-  const kitchenAeratorIndex = headerStrings.findIndex(
-    (h) =>
-      (h.includes("kitchen") && h.includes("aerator")) ||
-      (h.includes("kitchen") && h.includes("faucet")) ||
-      h.includes("kitchen aerator") ||
-      h.includes("kit aerator"),
-  )
+        console.log("Excel Parser: Processing file", file.name)
+        console.log("Excel Parser: Extracted", jsonData.length, "rows from Excel")
 
-  const bathroomAeratorIndex = headerStrings.findIndex(
-    (h) =>
-      (h.includes("bathroom") && h.includes("aerator")) ||
-      (h.includes("bath") && h.includes("aerator")) ||
-      h.includes("bathroom aerator") ||
-      h.includes("bath aerator"),
-  )
+        if (jsonData.length === 0) {
+          throw new Error("Excel file is empty")
+        }
 
-  const showerHeadIndex = headerStrings.findIndex(
-    (h) =>
-      (h.includes("shower") && (h.includes("head") || h.includes("aerator"))) ||
-      h.includes("showerhead") ||
-      h.includes("shower head"),
-  )
+        // Get headers from first row
+        const headers = jsonData[0] as string[]
+        console.log("Excel Parser: Analyzing headers:", headers)
 
-  console.log("Excel Parser: Found column indices:", {
-    unit: unitIndex,
-    toilet: toiletIndex,
-    kitchenAerator: kitchenAeratorIndex,
-    bathroomAerator: bathroomAeratorIndex,
-    showerHead: showerHeadIndex,
-  })
+        // Convert rows to objects using headers
+        const originalData: OriginalExcelRow[] = []
 
-  return {
-    unitIndex,
-    toiletIndex,
-    kitchenAeratorIndex,
-    bathroomAeratorIndex,
-    showerHeadIndex,
-  }
-}
+        for (let i = 1; i < jsonData.length; i++) {
+          const row = jsonData[i]
+          if (!row || row.length === 0) continue
 
-/**
- * Checks if a value indicates an aerator was installed
- */
-const isAeratorInstalled = (value: string): boolean => {
-  if (!value) return false
+          const rowObject: OriginalExcelRow = {}
+          headers.forEach((header, index) => {
+            if (header) {
+              rowObject[header] = row[index] || ""
+            }
+          })
 
-  const lowerValue = value.toLowerCase().trim()
+          // Find unit column
+          const unitValue = findUnitValue(rowObject)
+          if (unitValue && isValidUnit(unitValue)) {
+            originalData.push(rowObject)
+          }
+        }
 
-  // Check for installation indicators
-  const isInstalled =
-    lowerValue === "male" ||
-    lowerValue === "female" ||
-    lowerValue === "insert" ||
-    lowerValue.includes("gpm") ||
-    lowerValue === "1" ||
-    lowerValue === "2" ||
-    lowerValue === "yes" ||
-    lowerValue === "installed" ||
-    lowerValue === "x"
+        console.log("Excel Parser: Preserved", originalData.length, "original rows with all", headers.length, "columns")
 
-  if (isInstalled) {
-    console.log(`Excel Parser: Detected installation for value "${value}"`)
-  }
+        // Save original data for CSV preview (with all columns)
+        localStorage.setItem("rawInstallationData", JSON.stringify(originalData))
 
-  return isInstalled
-}
+        // Create consolidated data for reports
+        const consolidatedData = createConsolidatedData(originalData)
+        localStorage.setItem("installationData", JSON.stringify(consolidatedData))
 
-/**
- * Consolidates multiple Excel rows for the same unit
- */
-const consolidateUnitData = (excelRows: ExcelRow[]): ConsolidatedUnit[] => {
-  console.log(`Excel Parser: Starting consolidation of ${excelRows.length} rows`)
+        console.log("Excel Parser: Created", consolidatedData.length, "consolidated units")
 
-  const unitGroups = new Map<string, ExcelRow[]>()
-
-  // Group rows by unit number
-  excelRows.forEach((row) => {
-    if (!unitGroups.has(row.unit)) {
-      unitGroups.set(row.unit, [])
+        resolve(originalData)
+      } catch (error) {
+        console.error("Excel Parser: Error processing file:", error)
+        reject(error)
+      }
     }
-    unitGroups.get(row.unit)!.push(row)
+
+    reader.onerror = () => reject(new Error("Failed to read Excel file"))
+    reader.readAsArrayBuffer(file)
+  })
+}
+
+function findUnitValue(row: OriginalExcelRow): string | null {
+  // Look for unit column by common names
+  const unitKeys = ["unit", "Unit", "UNIT", "apt", "apartment", "room", "Room"]
+
+  for (const key of unitKeys) {
+    if (row[key] !== undefined && row[key] !== null && row[key] !== "") {
+      return String(row[key]).trim()
+    }
+  }
+
+  // Look for any key containing "unit"
+  for (const key of Object.keys(row)) {
+    if (key.toLowerCase().includes("unit") && row[key] !== undefined && row[key] !== null && row[key] !== "") {
+      return String(row[key]).trim()
+    }
+  }
+
+  return null
+}
+
+function isValidUnit(unit: string): boolean {
+  if (!unit || unit.trim() === "") return false
+
+  const lowerUnit = unit.toLowerCase().trim()
+  const invalidValues = [
+    "total",
+    "sum",
+    "average",
+    "avg",
+    "count",
+    "header",
+    "n/a",
+    "na",
+    "grand total",
+    "subtotal",
+    "summary",
+    "totals",
+    "grand",
+    "sub total",
+  ]
+
+  return !invalidValues.some((val) => lowerUnit.includes(val))
+}
+
+function createConsolidatedData(originalData: OriginalExcelRow[]): ConsolidatedUnit[] {
+  const unitGroups: { [unit: string]: OriginalExcelRow[] } = {}
+
+  // Group by unit
+  originalData.forEach((row) => {
+    const unit = findUnitValue(row)
+    if (unit) {
+      if (!unitGroups[unit]) {
+        unitGroups[unit] = []
+      }
+      unitGroups[unit].push(row)
+    }
   })
 
-  console.log(`Excel Parser: Created ${unitGroups.size} unit groups`)
-
-  // Consolidate each unit's data
+  // Create consolidated units
   const consolidated: ConsolidatedUnit[] = []
 
-  unitGroups.forEach((rows, unit) => {
+  Object.entries(unitGroups).forEach(([unit, rows]) => {
     let kitchenAeratorCount = 0
     let bathroomAeratorCount = 0
     let showerHeadCount = 0
 
     rows.forEach((row) => {
-      // Count kitchen aerator installations
-      if (isAeratorInstalled(row.kitchenAerator)) {
-        kitchenAeratorCount++
-      }
-
-      // Count bathroom aerator installations
-      if (isAeratorInstalled(row.bathroomAerator)) {
-        bathroomAeratorCount++
-      }
-
-      // Count shower head installations
-      if (isAeratorInstalled(row.showerHead)) {
-        showerHeadCount++
-      }
-    })
-
-    if (kitchenAeratorCount > 1 || bathroomAeratorCount > 1 || showerHeadCount > 1) {
-      console.log(`Excel Parser: Unit ${unit} has multiple installations:`, {
-        kitchen: kitchenAeratorCount,
-        bathroom: bathroomAeratorCount,
-        shower: showerHeadCount,
+      // Count installations based on row data
+      Object.entries(row).forEach(([key, value]) => {
+        if (value && String(value).toLowerCase().includes("aerator")) {
+          if (key.toLowerCase().includes("kitchen")) {
+            kitchenAeratorCount++
+          } else if (key.toLowerCase().includes("bathroom")) {
+            bathroomAeratorCount++
+          }
+        } else if (value && String(value).toLowerCase().includes("shower")) {
+          showerHeadCount++
+        }
       })
-    }
+    })
 
     consolidated.push({
       unit,
@@ -162,90 +173,14 @@ const consolidateUnitData = (excelRows: ExcelRow[]): ConsolidatedUnit[] => {
     })
   })
 
-  console.log(`Excel Parser: Consolidation complete. ${consolidated.length} consolidated units created`)
-  return consolidated
-}
+  return consolidated.sort((a, b) => {
+    const numA = Number.parseInt(a.unit)
+    const numB = Number.parseInt(b.unit)
 
-/**
- * Parse Excel file and return consolidated unit data
- */
-export const parseExcelFile = (file: File): Promise<ConsolidatedUnit[]> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-
-    reader.onload = (e) => {
-      try {
-        console.log(`Excel Parser: Processing file ${file.name}`)
-
-        const data = new Uint8Array(e.target?.result as ArrayBuffer)
-        const workbook = XLSX.read(data, { type: "array" })
-        const sheetName = workbook.SheetNames[0]
-        const worksheet = workbook.Sheets[sheetName]
-
-        // Convert to JSON
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
-        console.log(`Excel Parser: Extracted ${jsonData.length} rows from Excel`)
-
-        if (jsonData.length === 0) {
-          reject(new Error("Excel file is empty"))
-          return
-        }
-
-        const headers = jsonData[0] as any[]
-        const columnIndices = findColumnIndices(headers)
-
-        // Validate that we found the essential columns
-        if (columnIndices.unitIndex === -1) {
-          reject(
-            new Error(
-              "Could not find Unit column. Please ensure your Excel has a column containing 'unit', 'apt', or 'apartment'",
-            ),
-          )
-          return
-        }
-
-        console.log("Excel Parser: Header row:", headers)
-        if (jsonData.length > 1) {
-          console.log("Excel Parser: Sample data row:", jsonData[1])
-        }
-
-        const excelRows: ExcelRow[] = []
-        for (let i = 1; i < jsonData.length; i++) {
-          const row = jsonData[i] as any[]
-
-          excelRows.push({
-            unit: row[columnIndices.unitIndex]?.toString() || "",
-            toilet: columnIndices.toiletIndex !== -1 ? row[columnIndices.toiletIndex]?.toString() || "" : "",
-            kitchenAerator:
-              columnIndices.kitchenAeratorIndex !== -1 ? row[columnIndices.kitchenAeratorIndex]?.toString() || "" : "",
-            bathroomAerator:
-              columnIndices.bathroomAeratorIndex !== -1
-                ? row[columnIndices.bathroomAeratorIndex]?.toString() || ""
-                : "",
-            showerHead:
-              columnIndices.showerHeadIndex !== -1 ? row[columnIndices.showerHeadIndex]?.toString() || "" : "",
-          })
-        }
-
-        // Filter out empty rows
-        const validRows = excelRows.filter((row) => row.unit.trim() !== "")
-        console.log(`Excel Parser: ${validRows.length} valid rows after filtering`)
-
-        // Consolidate the data
-        const consolidated = consolidateUnitData(validRows)
-
-        // Save consolidated data to localStorage
-        localStorage.setItem("consolidatedData", JSON.stringify(consolidated))
-        console.log(`Excel Parser: Saved ${consolidated.length} consolidated units to localStorage`)
-
-        resolve(consolidated)
-      } catch (error) {
-        console.error("Excel Parser: Error processing file:", error)
-        reject(error)
-      }
+    if (!isNaN(numA) && !isNaN(numB)) {
+      return numA - numB
     }
 
-    reader.onerror = () => reject(new Error("Failed to read file"))
-    reader.readAsArrayBuffer(file)
+    return a.unit.localeCompare(b.unit, undefined, { numeric: true, sensitivity: "base" })
   })
 }
