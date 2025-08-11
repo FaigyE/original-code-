@@ -1,12 +1,10 @@
 "use client"
 import { useState, useEffect } from "react"
 import EditableText from "@/components/editable-text"
-import { getAeratorDescription, formatNote } from "@/lib/utils/aerator-helpers"
-import { useReportContext } from "@/lib/report-context"
+import { getAeratorDescription, formatNote } from "@/aerator-helpers"
 import { Button } from "@/components/ui/button"
 import { Plus, Trash2 } from "lucide-react"
-import { getFinalNoteForUnit, updateStoredNote, getStoredNotes } from "@/lib/notes"
-import type { ConsolidatedUnit } from "@/lib/utils/excel-parser"
+import type { ConsolidatedUnit } from "@/lib/excel-parser"
 
 interface InstallationData {
   Unit: string
@@ -27,6 +25,60 @@ interface ReportDetailPageProps {
   isEditable?: boolean
 }
 
+const useReportContext = () => {
+  const [sectionTitles, setSectionTitles] = useState({
+    detailsTitle: "Detailed Unit Information",
+  })
+
+  useEffect(() => {
+    const stored = localStorage.getItem("sectionTitles")
+    if (stored) {
+      try {
+        setSectionTitles(JSON.parse(stored))
+      } catch (error) {
+        console.error("Error parsing section titles:", error)
+      }
+    }
+  }, [])
+
+  return { sectionTitles, setSectionTitles }
+}
+
+const getFinalNoteForUnit = (unit: string, defaultNote = ""): string => {
+  try {
+    const storedNotes = localStorage.getItem("unifiedNotes")
+    if (storedNotes) {
+      const notes = JSON.parse(storedNotes)
+      return notes[unit] || defaultNote
+    }
+  } catch (error) {
+    console.error("Error getting note for unit:", error)
+  }
+  return defaultNote
+}
+
+const updateStoredNote = (unit: string, note: string) => {
+  try {
+    const storedNotes = localStorage.getItem("unifiedNotes") || "{}"
+    const notes = JSON.parse(storedNotes)
+    notes[unit] = note
+    localStorage.setItem("unifiedNotes", JSON.stringify(notes))
+    window.dispatchEvent(new Event("unifiedNotesUpdated"))
+  } catch (error) {
+    console.error("Error updating note:", error)
+  }
+}
+
+const getStoredNotes = () => {
+  try {
+    const storedNotes = localStorage.getItem("unifiedNotes")
+    return storedNotes ? JSON.parse(storedNotes) : {}
+  } catch (error) {
+    console.error("Error getting stored notes:", error)
+    return {}
+  }
+}
+
 export default function ReportDetailPage({
   installationData = [],
   consolidatedData = [],
@@ -35,7 +87,6 @@ export default function ReportDetailPage({
 }: ReportDetailPageProps) {
   const { sectionTitles, setSectionTitles } = useReportContext()
 
-  // State to store edited notes
   const [editedNotes, setEditedNotes] = useState<Record<string, string>>({})
   const [editedInstallations, setEditedInstallations] = useState<Record<string, Record<string, string>>>({})
   const [editedUnits, setEditedUnits] = useState<Record<string, string>>({})
@@ -49,11 +100,9 @@ export default function ReportDetailPage({
     notes: "Notes",
   })
 
-  // Use consolidated data if available, otherwise convert installation data
   const processedData: ConsolidatedUnit[] =
     consolidatedData.length > 0 ? consolidatedData : convertInstallationDataToConsolidated(installationData)
 
-  // Helper function to convert old installation data to consolidated format
   function convertInstallationDataToConsolidated(data: InstallationData[]): ConsolidatedUnit[] {
     return data.map((item) => ({
       unit: item.Unit || "",
@@ -63,7 +112,6 @@ export default function ReportDetailPage({
     }))
   }
 
-  // Helper function to check if aerator is installed (for backward compatibility)
   function isAeratorInstalled(value: string): boolean {
     if (!value) return false
     const lowerValue = value.toLowerCase().trim()
@@ -77,43 +125,33 @@ export default function ReportDetailPage({
     )
   }
 
-  // Function to get the appropriate "not accessed" message
   const getNotAccessedMessage = (): string => {
     return "Unit not accessed."
   }
 
-  // Combine and sort all data
   const allData = [...additionalRows, ...processedData]
 
-  // Function to sort data by unit number
   const sortDataByUnit = (data: ConsolidatedUnit[]) => {
     return [...data].sort((a, b) => {
-      // Get edited unit numbers if they exist
       const finalUnitA = editedUnits[a.unit] !== undefined ? editedUnits[a.unit] : a.unit
       const finalUnitB = editedUnits[b.unit] !== undefined ? editedUnits[b.unit] : b.unit
 
-      // Handle empty units - put them at the top
       if (!finalUnitA || finalUnitA.trim() === "") return -1
       if (!finalUnitB || finalUnitB.trim() === "") return 1
 
-      // Try to parse as numbers first
       const numA = Number.parseInt(finalUnitA)
       const numB = Number.parseInt(finalUnitB)
 
-      // If both are valid numbers, sort numerically
       if (!isNaN(numA) && !isNaN(numB)) {
         return numA - numB
       }
 
-      // Otherwise, sort alphabetically
       return finalUnitA.localeCompare(finalUnitB, undefined, { numeric: true, sensitivity: "base" })
     })
   }
 
-  // Filter and sort data
   const filteredData = (() => {
     const result = allData.filter((item) => {
-      // Filter out empty units (except additional rows)
       const isAdditionalRow = additionalRows.some((row) => row.unit === item.unit)
       if (isAdditionalRow) return true
 
@@ -123,25 +161,21 @@ export default function ReportDetailPage({
     return sortDataByUnit(result)
   })()
 
-  // Split data into pages
   const itemsPerPage = 10
   const dataPages = []
   for (let i = 0; i < filteredData.length; i += itemsPerPage) {
     dataPages.push(filteredData.slice(i, i + itemsPerPage))
   }
 
-  // Check what columns to show
-  const hasKitchenAerators = filteredData.some((item) => item.kitchenAeratorCount > 0) || additionalRows.length > 0
-  const hasBathroomAerators = filteredData.some((item) => item.bathroomAeratorCount > 0) || additionalRows.length > 0
+  const hasKitchenAerators = true // Always show kitchen aerator columns
+  const hasBathroomAerators = true // Always show bathroom aerator columns
   const hasShowers = filteredData.some((item) => item.showerHeadCount > 0) || additionalRows.length > 0
-  const hasToilets = false // You can add toilet logic here if needed
-  const hasNotes = true // Always show notes column
+  const hasToilets = false
+  const hasNotes = true
 
-  // Function to compile notes for a unit
   const compileNotesForUnit = (item: ConsolidatedUnit, includeNotAccessed = true): string => {
     let notes = ""
 
-    // Check if unit was not accessed (all installation counts are 0)
     const isUnitNotAccessed =
       item.kitchenAeratorCount === 0 && item.bathroomAeratorCount === 0 && item.showerHeadCount === 0
 
@@ -152,7 +186,6 @@ export default function ReportDetailPage({
     return formatNote(notes.trim())
   }
 
-  // Event handlers
   const handleNoteEdit = (unit: string, value: string) => {
     if (isEditable) {
       updateStoredNote(unit, value)
@@ -259,7 +292,6 @@ export default function ReportDetailPage({
         handleUnitEdit(item.unit, "")
       }
 
-      // Remove note if it exists
       if (item.unit) {
         const storedNotes = getStoredNotes()
         if (storedNotes[item.unit]) {
@@ -292,7 +324,6 @@ export default function ReportDetailPage({
     }
   }
 
-  // Load data from localStorage
   useEffect(() => {
     const storedInstallations = localStorage.getItem("detailInstallations")
     if (storedInstallations) {
@@ -332,7 +363,6 @@ export default function ReportDetailPage({
     }
   }, [])
 
-  // Listen for unified notes updates
   useEffect(() => {
     const handleNotesUpdate = () => {
       setEditedNotes((prev) => ({ ...prev }))
@@ -461,13 +491,11 @@ export default function ReportDetailPage({
             {filteredData.map((item, index) => {
               const isAdditionalRow = additionalRows.some((row) => row.unit === item.unit)
 
-              // Get values for display using the NEW function signature
               const kitchenAerator = getAeratorDescription(item.kitchenAeratorCount, "kitchen")
               const bathroomAerator = getAeratorDescription(item.bathroomAeratorCount, "bathroom")
               const shower = getAeratorDescription(item.showerHeadCount, "shower")
-              const toilet = "" // Add toilet logic if needed
+              const toilet = ""
 
-              // Get compiled notes
               const compiledNotes = compileNotesForUnit(item, true)
               const finalNote = getFinalNoteForUnit(item.unit, compiledNotes)
 
@@ -613,7 +641,6 @@ export default function ReportDetailPage({
       </div>
     </div>
   ) : (
-    // PDF/Print mode - same structure but without editing capabilities
     <>
       {dataPages.map((pageData, pageIndex) => (
         <div key={pageIndex} className="report-page min-h-[1056px] relative">
