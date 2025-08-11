@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useState } from "react"
-import { useRouter } from "next/router"
+import { useRouter } from "next/navigation"
 import { processCsvData } from "@/utils/csvProcessor"
 import { parseExcelFile } from "@/utils/excelParser"
 
