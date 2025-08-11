@@ -5,8 +5,7 @@ interface OriginalExcelRow {
   [key: string]: any
 }
 
-// Interface for consolidated unit data
-interface ConsolidatedUnit {
+export interface ConsolidatedUnit {
   unit: string
   kitchenAeratorCount: number
   bathroomAeratorCount: number

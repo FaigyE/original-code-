@@ -6,22 +6,22 @@ export interface CustomerInfo {
   state: string
   zip: string
   date: string
-  unitType?: string
 }
 
 export interface InstallationData {
   Unit: string
-  "Shower Head": string
-  "Bathroom aerator": string
-  "Kitchen Aerator": string
-  "Leak Issue Kitchen Faucet": string
-  "Leak Issue Bath Faucet": string
-  "Tub Spout/Diverter Leak Issue": string
-  Notes: string
-  [key: string]: string | undefined
+  [key: string]: string | number | undefined
 }
 
 export interface Note {
   unit: string
   note: string
+}
+
+export interface ConsolidatedUnit {
+  unit: string
+  kitchenAeratorCount: number
+  bathroomAeratorCount: number
+  showerHeadCount: number
+  notes?: string
 }
