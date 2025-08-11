@@ -209,6 +209,7 @@ export default function Home() {
       } else if (fileExtension === "xlsx" || fileExtension === "xls") {
         // Parse Excel file - it will be converted to CSV internally and use the same processing logic
         parsedData = await parseExcelFile(file)
+localStorage.setItem("consolidatedData", JSON.stringify(parsedData))
       } else {
         throw new Error("Unsupported file format. Please upload a CSV or Excel file.")
       }

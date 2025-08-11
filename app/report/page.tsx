@@ -13,6 +13,7 @@ import ReportDetailPage from "@/components/report-detail-page"
 import EnhancedPdfButton from "@/components/enhanced-pdf-button"
 import { ReportProvider, useReportContext } from "@/lib/report-context"
 import type { CustomerInfo, InstallationData, Note } from "@/lib/types"
+import type { ConsolidatedUnit } from "@/lib/utils/excel-parser"
 
 // Loading component - separate component for loading state
 function LoadingState() {
@@ -43,12 +44,14 @@ function NoDataState({ onBack }: { onBack: () => void }) {
 // Report view component - separate component for the actual report
 function ReportView({
   customerInfo,
+  consolidatedData,
   installationData,
   toiletCount,
   notes,
   onBack,
 }: {
   customerInfo: CustomerInfo
+  consolidatedData: ConsolidatedUnit[]
   installationData: InstallationData[]
   toiletCount: number
   notes: Note[]
@@ -95,7 +98,7 @@ function ReportView({
           </TabsContent>
 
           <TabsContent value="details">
-            <ReportDetailPage installationData={installationData} isPreview={true} isEditable={true} />
+            <ReportDetailPage consolidatedData={consolidatedData} isPreview={true} isEditable={true} />
           </TabsContent>
         </Tabs>
       </div>
@@ -112,7 +115,7 @@ function ReportView({
         <div className="page-break"></div>
         <ReportNotesPage notes={notes} isPreview={false} isEditable={false} />
         <div className="page-break"></div>
-        <ReportDetailPage installationData={installationData} isPreview={false} isEditable={false} />
+        <ReportDetailPage consolidatedData={consolidatedData} isPreview={false} isEditable={false} />
       </div>
     </div>
   )
@@ -124,6 +127,7 @@ function ReportContent() {
   const { customerInfo, toiletCount, setToiletCount, notes, setNotes } = useReportContext()
 
   const [installationData, setInstallationData] = useState<InstallationData[]>([])
+  const [consolidatedData, setConsolidatedData] = useState<ConsolidatedUnit[]>([])
   const [loading, setLoading] = useState(true)
   const [csvSchema, setCsvSchema] = useState<any[]>([])
   const [filteredData, setFilteredData] = useState<InstallationData[]>([])
@@ -133,18 +137,99 @@ function ReportContent() {
     router.push("/")
   }
 
+  // Helper function to convert InstallationData to ConsolidatedUnit for backward compatibility
+  const convertToConsolidated = (data: InstallationData[]): ConsolidatedUnit[] => {
+    // Group by unit number first
+    const unitGroups = new Map<string, InstallationData[]>()
+
+    data.forEach((item) => {
+      const unit = item.Unit || ""
+      if (!unitGroups.has(unit)) {
+        unitGroups.set(unit, [])
+      }
+      unitGroups.get(unit)!.push(item)
+    })
+
+    // Convert to consolidated format
+    const consolidated: ConsolidatedUnit[] = []
+
+    unitGroups.forEach((items, unit) => {
+      let kitchenCount = 0
+      let bathroomCount = 0
+      let showerCount = 0
+
+      items.forEach((item) => {
+        // Count kitchen aerator installations
+        if (item["Kitchen Aerator"] && isInstalled(item["Kitchen Aerator"])) {
+          kitchenCount++
+        }
+
+        // Count bathroom aerator installations
+        if (item["Bathroom aerator"] && isInstalled(item["Bathroom aerator"])) {
+          bathroomCount++
+        }
+
+        // Count shower head installations
+        if (item["Shower Head"] && isInstalled(item["Shower Head"])) {
+          showerCount++
+        }
+      })
+
+      consolidated.push({
+        unit,
+        kitchenAeratorCount: kitchenCount,
+        bathroomAeratorCount: bathroomCount,
+        showerHeadCount: showerCount,
+      })
+    })
+
+    return consolidated
+  }
+
+  // Helper function to check if something is installed
+  const isInstalled = (value: string): boolean => {
+    if (!value) return false
+    const lowerValue = value.toLowerCase().trim()
+    return (
+      lowerValue === "male" ||
+      lowerValue === "female" ||
+      lowerValue === "insert" ||
+      lowerValue.includes("gpm") ||
+      lowerValue === "1" ||
+      lowerValue === "2"
+    )
+  }
+
   // Load data from localStorage
   const loadData = useCallback(() => {
     try {
+      // Try to load consolidated data first (from new Excel parser)
+      const storedConsolidatedData = localStorage.getItem("consolidatedData")
       const storedInstallationData = localStorage.getItem("installationData")
       const storedToiletCount = localStorage.getItem("toiletCount")
 
-      if (storedInstallationData && storedToiletCount) {
+      if (storedConsolidatedData && storedToiletCount) {
+        // New format - use consolidated data directly
+        const parsedConsolidatedData = JSON.parse(storedConsolidatedData)
+        const parsedToiletCount = JSON.parse(storedToiletCount)
+
+        setConsolidatedData(parsedConsolidatedData)
+        setToiletCount(parsedToiletCount)
+
+        console.log("Report: Loaded consolidated data:", parsedConsolidatedData)
+      } else if (storedInstallationData && storedToiletCount) {
+        // Old format - convert to consolidated
         const parsedInstallationData = JSON.parse(storedInstallationData)
         const parsedToiletCount = JSON.parse(storedToiletCount)
 
         setInstallationData(parsedInstallationData)
         setToiletCount(parsedToiletCount)
+
+        // Convert to consolidated format
+        const consolidated = convertToConsolidated(parsedInstallationData)
+        setConsolidatedData(consolidated)
+
+        console.log("Report: Converted installation data to consolidated:", consolidated)
 
         // Log the schema of the CSV data
         if (parsedInstallationData && parsedInstallationData.length > 0) {
@@ -217,13 +302,14 @@ function ReportContent() {
     return <LoadingState />
   }
 
-  if (!customerInfo || installationData.length === 0) {
+  if (!customerInfo || (consolidatedData.length === 0 && installationData.length === 0)) {
     return <NoDataState onBack={handleBack} />
   }
 
   return (
     <ReportView
       customerInfo={customerInfo}
+      consolidatedData={consolidatedData}
       installationData={filteredData}
       toiletCount={toiletCount}
       notes={notes}
