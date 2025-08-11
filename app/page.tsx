@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
 import { useRouter } from "next/navigation"
 import Papa from "papaparse"
-import { parseExcelFile } from "../excel-parser" // Changed from @/excel-parser to relative path
+import { parseExcelFile } from "../excel-parser" // Using relative path to excel parser
 
 export default function Home() {
   const router = useRouter()
