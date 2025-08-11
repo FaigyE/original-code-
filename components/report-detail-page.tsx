@@ -1,6 +1,6 @@
 "use client"
 import { useState, useEffect } from "react"
-import { getAeratorDescription } from "../aerator-helpers"
+import { getAeratorDescription } from "@/lib/utils/aerator-helpers"
 import type { ConsolidatedUnit } from "@/lib/excel-parser"
 
 interface ReportDetailPageProps {
