@@ -1,7 +1,7 @@
 "use client"
 import { useState, useEffect } from "react"
 import EditableText from "@/components/editable-text"
-import { getAeratorDescription, formatNote } from "@/aerator-helpers"
+import { getAeratorDescription, formatNote } from "../aerator-helpers"
 import { Button } from "@/components/ui/button"
 import { Plus, Trash2 } from "lucide-react"
 import type { ConsolidatedUnit } from "@/lib/excel-parser"
